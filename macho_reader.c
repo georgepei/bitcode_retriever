@@ -41,14 +41,6 @@ static const char *cpu_type_name(cpu_type_t cpu_type) {
   return "unknown";
 }
 
-const char *get_cpu_type_name(struct mach_header *header) {
-  return cpu_type_name(header->cputype);
-}
-
-const char *get_cpu_type_name_64(struct mach_header_64 *header) {
-  return cpu_type_name(header->cputype);
-}
-
 uint32_t get_magic(FILE *stream, int offset) {
   uint32_t magic = 0;
   fseek(stream, offset, SEEK_SET);
@@ -66,7 +58,7 @@ int is_magic_macho(const uint32_t magic) {
       || magic == FAT_CIGAM;
 }
 
-int is_magic_64(const uint32_t magic) {
+bool is_magic_64(const uint32_t magic) {
   return magic == MH_MAGIC_64 || magic == MH_CIGAM_64;
 }
 
@@ -111,30 +103,27 @@ uint32_t offset_for_arch(FILE *stream, const int index, const int swap_bytes) {
   return arch_offset;
 }
 
-struct mach_header *load_mach_header(FILE *stream, const int offset, const int swap_bytes) {
-  struct mach_header *header = malloc(sizeof(struct mach_header));
-  fseek(stream, offset, SEEK_SET);
-  fread(header, sizeof(struct mach_header), 1, stream);
-  rewind(stream);
+struct mach_header *load_mach_header(FILE *stream, const int offset, const int swap_bytes, bool is64bit) {
+    uint32_t machohead_size = 0;
+    if (is64bit) {
+        machohead_size = sizeof(struct mach_header_64);
+    } else {
+        machohead_size = sizeof(struct mach_header);
+    }
 
-  if (swap_bytes) {
-    swap_mach_header(header, 0);
-  }
+    struct mach_header *header = malloc(machohead_size);
+    fseek(stream, offset, SEEK_SET);
+    fread(header, machohead_size, 1, stream);
+    rewind(stream);
 
-  return header;
-}
-
-struct mach_header_64 *load_mach_header_64(FILE *stream, const int offset, const int swap_bytes) {
-  struct mach_header_64 *header = malloc(sizeof(struct mach_header_64));
-  fseek(stream, offset, SEEK_SET);
-  fread(header, sizeof(struct mach_header_64), 1, stream);
-  rewind(stream);
-
-  if (swap_bytes) {
-    swap_mach_header_64(header, 0);
-  }
-
-  return header;
+    if (swap_bytes) {
+        if (is64bit) {
+            swap_mach_header_64(header, 0);
+        } else {
+            swap_mach_header(header, 0);
+        }
+    }
+    return header;
 }
 
 struct load_command *load_load_command(FILE *stream, const int offset, const int swap_bytes) {
@@ -150,63 +139,76 @@ struct load_command *load_load_command(FILE *stream, const int offset, const int
   return command;
 }
 
-struct segment_command *load_segment_command(FILE *stream, const int offset, const int swap_bytes) {
-  struct segment_command *command = malloc(sizeof(struct segment_command));
-  fseek(stream, offset, SEEK_SET);
-  fread(command, sizeof(struct segment_command), 1, stream);
-  rewind(stream);
+struct segment_command *load_segment_command(FILE *stream, const int offset, struct mach_header *header) {
+    int swap_bytes = is_should_swap_bytes(header->magic);
+    int is64bit = is_magic_64(header->magic);
 
-  if (swap_bytes) {
-    swap_segment_command(command, 0);
-  }
-
-  return command;
-}
-
-struct segment_command_64 *load_segment_command_64(FILE *stream, const int offset, const int swap_bytes) {
-  struct segment_command_64 *command = malloc(sizeof(struct segment_command_64));
-  fseek(stream, offset, SEEK_SET);
-  fread(command, sizeof(struct segment_command_64), 1, stream);
-  rewind(stream);
-
-  if (swap_bytes) {
-    swap_segment_command_64(command, 0);
-  }
-
-  return command;
-}
-
-struct segment_command *load_llvm_segment_command(FILE *stream, struct mach_header *header, const int offset, const int swap_bytes) {
-  int cmd_offset = offset + sizeof(struct mach_header);
-  for (int i = 0; i < header->ncmds; i++) {
-    struct load_command *cmd = load_load_command(stream, cmd_offset, swap_bytes);
-    if (cmd->cmd == LC_SEGMENT) {
-      struct segment_command *segment = load_segment_command(stream, cmd_offset, swap_bytes);
-      if (!strncmp("__LLVM", segment->segname, 7)) {
-        return segment;
-      }
-      free(segment);
+    uint32_t segment_command_size = 0;
+    if(is64bit){
+        segment_command_size = sizeof(struct segment_command_64);
+    } else{
+        segment_command_size = sizeof(struct segment_command);
     }
-    cmd_offset += cmd->cmdsize;
-    free(cmd);
+
+  struct segment_command *command = malloc(segment_command_size);
+  fseek(stream, offset, SEEK_SET);
+  fread(command, segment_command_size, 1, stream);
+  rewind(stream);
+
+  if (swap_bytes) {
+      if(is64bit) {
+          swap_segment_command_64(command, 0);
+      } else{
+          swap_segment_command(command, 0);
+      }
   }
 
-  return 0;
+  return command;
 }
 
-struct bitcode_data* find_bitcode_section(FILE *stream, struct mach_header_64 *header, const int offset, const int swap_bytes, struct segment_command_64* cmd) {
+struct bitcode_data* find_bitcode_section(FILE *stream, struct mach_header *header, const int offset, const int swap_bytes, struct segment_command_64* cmd) {
+    bool is64bit = is_magic_64(header->magic);
+    uint32_t section_size = 0;
+    uint32_t machohead_size = 0;
+    uint32_t segment_command_size = 0;
+    if(is64bit){
+        section_size = sizeof(struct section_64);
+        machohead_size = sizeof(struct mach_header_64);
+        segment_command_size = sizeof(struct segment_command_64);
+    } else{
+        section_size = sizeof(struct section);
+        machohead_size = sizeof(struct mach_header);
+        segment_command_size = sizeof(struct segment_command);
+    }
+
     for(int i=0; i< cmd->nsects; i++){
-        struct section_64 section = {0};
-        fseek(stream, offset+sizeof(struct mach_header_64)+sizeof(struct segment_command_64)+i*sizeof(struct section_64), SEEK_SET);
-        fread(&section, sizeof(section), 1, stream);
+        struct section* section = calloc(section_size, 1);
+
+        fseek(stream, offset + machohead_size + segment_command_size + i*section_size, SEEK_SET);
+        fread(section, section_size, 1, stream);
         if(swap_bytes) {
-            swap_section_64(&section, 1, 0);
+            if(is64bit) {
+                swap_section_64((struct section_64*)section, 1, 0);
+            } else{
+                swap_section((struct section*)section, 1, 0);
+            }
         }
-        printf("sgement name: %s, section name: %s", section.segname, section.sectname);
-        if(strcmp(section.sectname, "__bitcode") == 0 && strcmp(section.segname, "__LLVM") == 0){
+
+        printf("sgement name: %s, section name: %s\n", section->segname, section->sectname);
+        if(strcmp(section->sectname, "__bitcode") == 0 && strcmp(section->segname, "__LLVM") == 0){
             //found bitcode
-            const char *cpu_name = get_cpu_type_name_64(header);
-            struct bitcode_data* bitcode = make_bitcode(stream, cpu_name, offset + section.offset, section.size, false);
+            const char *cpu_name = cpu_type_name(header->cputype);
+            int32_t section_offset = 0;
+            int32_t section_size = 0;
+            if(is64bit){
+                section_offset = ((struct section_64*)section)->offset;
+                section_size = ((struct section_64*)section)->size;
+            } else{
+                section_offset = ((struct section*)section)->offset;
+                section_size = ((struct section*)section)->size;
+            }
+
+            struct bitcode_data* bitcode = make_bitcode(stream, cpu_name, offset + section_offset, section_size, false);
 
             return bitcode;
         }
@@ -214,21 +216,38 @@ struct bitcode_data* find_bitcode_section(FILE *stream, struct mach_header_64 *h
     return NULL;
 }
 
-struct bitcode_data *load_llvm_segment_command_64(FILE *stream, struct mach_header_64 *header, const int offset, const int swap_bytes) {
+struct bitcode_data *load_llvm_segment_command(FILE *stream, const int offset, struct mach_header *header) {
+    int swap_bytes = is_should_swap_bytes(header->magic);
+    int is64bit = is_magic_64(header->magic);
 
-    int cmd_offset = offset + sizeof(struct mach_header_64);
+    int cmd_offset = 0;
+    uint32_t load_command_size = 0;
+    uint32_t filetype = 0;
+    uint32_t cpu_type = 0;
+    if(is64bit){
+        cmd_offset = offset + sizeof(struct mach_header_64);
+        load_command_size = ((struct mach_header_64 *)header)->ncmds;
+        filetype = ((struct mach_header_64 *)header)->filetype;
+        cpu_type = ((struct mach_header_64 *)header)->cputype;
+    } else{
+        cmd_offset = offset + sizeof(struct mach_header);
+        load_command_size = header->ncmds;
+        filetype = header->filetype;
+        cpu_type = header->cputype;
+    }
+
     struct bitcode_data *bitcode = NULL;
 
-    for (int i = 0; i < header->ncmds; i++) {
+    for (int i = 0; i < load_command_size; i++) {
         struct load_command *cmd = load_load_command(stream, cmd_offset, swap_bytes);
-        if (cmd->cmd == LC_SEGMENT_64) {
-            struct segment_command_64 *segment = load_segment_command_64(stream, cmd_offset, swap_bytes);
-            if (header->filetype == MH_OBJECT) {
+        if (cmd->cmd == LC_SEGMENT_64 || cmd == LC_SEGMENT) {
+            struct segment_command *segment = load_segment_command(stream, cmd_offset, header);
+            if (filetype == MH_OBJECT) {
                 bitcode = find_bitcode_section(stream, header, offset, swap_bytes, segment);
 
             } else {
                 if (!strncmp("__LLVM", segment->segname, 7)) {
-                    const char *cpu_name = get_cpu_type_name_64(header);
+                    const char *cpu_name = cpu_type_name(cpu_type);
                     bitcode = make_bitcode(stream, cpu_name, offset + segment->fileoff, segment->filesize, true);
                 }
             }
@@ -244,4 +263,3 @@ struct bitcode_data *load_llvm_segment_command_64(FILE *stream, struct mach_head
 
     return bitcode;
 }
-

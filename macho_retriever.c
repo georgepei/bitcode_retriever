@@ -21,40 +21,17 @@ struct bitcode_data *make_bitcode(FILE *stream, const char *cpuname, const uint6
   return bitcode;
 }
 
-struct bitcode_data *extract_bitcode(FILE *stream, const int offset, const int swap_bytes) {
-  struct mach_header *header = load_mach_header(stream, offset, swap_bytes);
-  const char *cpu_name = get_cpu_type_name(header);
-  struct segment_command *segment = load_llvm_segment_command(stream, header, offset, swap_bytes);
-  if (!segment) {
-    free(header);
-    return NULL;
-  }
-
-  struct bitcode_data *bitcode = make_bitcode(stream, cpu_name, offset + segment->fileoff, segment->filesize, true);
-  free(segment);
-  free(header);
-  return bitcode;
-}
-
-struct bitcode_data *extract_bitcode_64(FILE *stream, const int offset, const int swap_bytes) {
-  struct mach_header_64 *header = load_mach_header_64(stream, offset, swap_bytes);
-
-    struct bitcode_data *bitcode = load_llvm_segment_command_64(stream, header, offset, swap_bytes);
-
-  free(header);
-  return bitcode;
-}
 
 struct bitcode_data *retrieve_bitcode_from_nonfat(FILE *stream, const uint32_t offset) {
-  uint32_t magic = get_magic(stream, offset);
-  int is64 = is_magic_64(magic);
-  int swap_bytes = is_should_swap_bytes(magic);
+    uint32_t magic = get_magic(stream, offset);
+    bool is64 = is_magic_64(magic);
+    int swap_bytes = is_should_swap_bytes(magic);
+    struct mach_header *header = load_mach_header(stream, offset, swap_bytes, is64);
 
-  if (is64) {
-    return extract_bitcode_64(stream, offset, swap_bytes);
-  } else {
-    return extract_bitcode(stream, offset, swap_bytes);
-  }
+
+    struct bitcode_data *bitcode = load_llvm_segment_command(stream, offset, header);
+    free(header);
+    return bitcode;
 }
 
 int is_macho(FILE *stream) {

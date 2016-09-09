@@ -18,8 +18,7 @@ struct bitcode_data {
 };
 
 struct bitcode_data* make_bitcode(FILE* stream, const char* cpuname, const uint64_t offset, const uint64_t size, bool is_archive);
-struct bitcode_data* extract_bitcode(FILE* stream, const int offset, const int swap_bytes);
-struct bitcode_data* extract_bitcode_64(FILE* stream, const int offset, const int swap_bytes);
+
 
 struct bitcode_data* retrieve_bitcode_from_nonfat(FILE* stream, const uint32_t offset);
 
