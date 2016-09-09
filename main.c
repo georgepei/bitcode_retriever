@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
 
   FILE *stream = fopen(filename, "rb");
 
-  struct bitcode_archive *archives[max_number_of_archives()];
+  struct bitcode_data *archives[max_number_of_archives()];
   int archive_count;
   retrieve_bitcode(stream, archives, &archive_count);
 

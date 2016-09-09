@@ -31,7 +31,7 @@ struct mach_header_64 *load_mach_header_64(FILE *stream, const int offset, const
 
 struct segment_command *load_llvm_segment_command(FILE *stream, struct mach_header *header, const int offset,
                                                   const int swap_bytes);
-struct segment_command_64 *load_llvm_segment_command_64(FILE *stream, struct mach_header_64 *header, const int offset,
+struct bitcode_data *load_llvm_segment_command_64(FILE *stream, struct mach_header_64 *header, const int offset,
                                                         const int swap_bytes);
 
 #ifdef __cplusplus

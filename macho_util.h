@@ -9,10 +9,10 @@ extern "C" {
 #include "macho_retriever.h"
 
 char *fname(const char *name, const char *ext);
-char *write_to_xar(struct bitcode_archive *bitcode);
+char *write_to_xar(struct bitcode_data *bitcode);
 
 int extract_xar(const char *path, const char *cpu, char *files[], int *count);
-int write_to_bitcode(struct bitcode_archive *bitcode, char *files[], int *count);
+int write_to_bitcode(struct bitcode_data *bitcode, char *files[], int *count);
 
 int get_options(xmlNode *option_parent, char *options[], int *size);
 int get_linker_options(xmlNode *a_node, char *options[], int *size);
