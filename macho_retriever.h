@@ -9,23 +9,24 @@ extern "C" {
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "WinList.h"
 
-struct bitcode_data {
-  uint64_t size;
+typedef struct _bitcode_data {
+    LIST_ENTRY listEntry;
+    uint64_t size;
     bool is_archive;
-  char* buffer;
-  const char* cpu;
-};
+    char *buffer;
+    const char *cpu;
+    char *file_name;
+}bitcode_data;
 
-struct bitcode_data* make_bitcode(FILE* stream, const char* cpuname, const uint64_t offset, const uint64_t size, bool is_archive);
+bitcode_data* make_bitcode(FILE* stream, const char* cpuname, const uint64_t offset, const uint64_t size, bool is_archive);
 
-
-struct bitcode_data* retrieve_bitcode_from_nonfat(FILE* stream, const uint32_t offset);
 
 int max_number_of_archives();
 int is_macho(FILE* stream);
 
-void retrieve_bitcode(FILE* stream, struct bitcode_data* bitcodes[], int* count);
+void retrieve_bitcode(FILE *stream, LIST_ENTRY* bit_codes);
 
 #ifdef __cplusplus
 }

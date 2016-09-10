@@ -9,18 +9,32 @@
 
 #include <libxml/parser.h>
 
-char *fname(const char *name, const char *ext) {
+char *construct_file_name(const char *arch, const char* file_name, const char *ext) {
   const char *delimiter = ".";
-  int length = strlen(name) + strlen(delimiter) + strlen(ext) + 1;
-  char *filename = calloc(sizeof(char), length);
-  strcpy(filename, name);
-  strcat(filename, delimiter);
-  strcat(filename, ext);
-  return filename;
+  int length = strlen(arch) + strlen(delimiter) + strlen(ext) + 1;
+    if(file_name != NULL){
+        length += strlen(file_name);
+        length += strlen(delimiter);
+    }
+  char *new_file_name = calloc(sizeof(char), length);
+  strcpy(new_file_name, arch);
+  strcat(new_file_name, delimiter);
+  if(file_name != NULL){
+    strcat(new_file_name, file_name);
+    strcat(new_file_name, delimiter);
+  }
+  strcat(new_file_name, ext);
+  return new_file_name;
 }
 
-char *write_to_xar(struct bitcode_data *bitcode) {
-  char *filename = fname(bitcode->cpu, "xar");
+char *write_to_file(bitcode_data *bitcode) {
+    char* suffix = NULL;
+    if(bitcode->is_archive){
+        suffix = "xar";
+    } else{
+        suffix = "bc";
+    }
+  char *filename = construct_file_name(bitcode->cpu, bitcode->file_name, suffix);
   FILE *output = fopen(filename, "wb");
 
   if (!output) {
@@ -34,106 +48,111 @@ char *write_to_xar(struct bitcode_data *bitcode) {
 
   return filename;
 }
+//
+//int extract_xar(const char *path, const char *cpu, char *files[], int *count) {
+//  xar_t x;
+//  xar_iter_t xi;
+//  xar_file_t xf;
+//  xar_stream xs;
+//  char buffer[8192];
+//
+//  x = xar_open(path, READ);
+//  if (!x) {
+//    fprintf(stderr, "Error opening archive\n");
+//    return 1;
+//  }
+//
+//  xi = xar_iter_new();
+//  if (!xi) {
+//    fprintf(stderr, "Error creating xar iterator\n");
+//    return 2;
+//  }
+//
+//  *count = 0;
+//  for (xf = xar_file_first(x, xi); xf; xf = xar_file_next(xi)) {
+//    char *path = xar_get_path(xf);
+//    const char *type;
+//    xar_prop_get(xf, "type", &type);
+//    if (!type) {
+//      fprintf(stderr, "File has no type %s\n", path);
+//      free(path);
+//      continue;
+//    }
+//    if (strcmp(type, "file") != 0) {
+//      fprintf(stderr, "Skipping %s\n", path);
+//      free(path);
+//      continue;
+//    }
+//
+//    if (xar_extract_tostream_init(x, xf, &xs) != XAR_STREAM_OK) {
+//      fprintf(stderr, "Error initializing stream %s\n", path);
+//      free(path);
+//      continue;
+//    }
+//
+//    char *prefix = construct_file_name(cpu, path);
+//    char *output_path = construct_file_name(prefix, "bc");
+//    free(path);
+//    free(prefix);
+//
+//    FILE *output = fopen(output_path, "wb");
+//    if (!output) {
+//      fprintf(stderr, "Error opening output file %s\n", output_path);
+//      free(output_path);
+//      continue;
+//    }
+//
+//    xs.avail_out = sizeof(buffer);
+//    xs.next_out = buffer;
+//
+//    int32_t ret;
+//    while ((ret = xar_extract_tostream(&xs)) != XAR_STREAM_END) {
+//      if (ret == XAR_STREAM_ERR) {
+//        fprintf(stderr, "Error extracting stream %s\n", output_path);
+//        free(output_path);
+//        return 3;
+//      }
+//
+//      fwrite(buffer, sizeof(char), sizeof(buffer) - xs.avail_out, output);
+//
+//      xs.avail_out = sizeof(buffer);
+//      xs.next_out = buffer;
+//    }
+//
+//    if (xar_extract_tostream_end(&xs) != XAR_STREAM_OK) {
+//      fprintf(stderr, "Error ending stream %s\n", output_path);
+//    }
+//
+//    fclose(output);
+//    files[(*count)++] = output_path;
+//  }
+//  return 0;
+//}
 
-int extract_xar(const char *path, const char *cpu, char *files[], int *count) {
-  xar_t x;
-  xar_iter_t xi;
-  xar_file_t xf;
-  xar_stream xs;
-  char buffer[8192];
-
-  x = xar_open(path, READ);
-  if (!x) {
-    fprintf(stderr, "Error opening archive\n");
-    return 1;
-  }
-
-  xi = xar_iter_new();
-  if (!xi) {
-    fprintf(stderr, "Error creating xar iterator\n");
-    return 2;
-  }
-
-  *count = 0;
-  for (xf = xar_file_first(x, xi); xf; xf = xar_file_next(xi)) {
-    char *path = xar_get_path(xf);
-    const char *type;
-    xar_prop_get(xf, "type", &type);
-    if (!type) {
-      fprintf(stderr, "File has no type %s\n", path);
-      free(path);
-      continue;
-    }
-    if (strcmp(type, "file") != 0) {
-      fprintf(stderr, "Skipping %s\n", path);
-      free(path);
-      continue;
-    }
-
-    if (xar_extract_tostream_init(x, xf, &xs) != XAR_STREAM_OK) {
-      fprintf(stderr, "Error initializing stream %s\n", path);
-      free(path);
-      continue;
-    }
-
-    char *prefix = fname(cpu, path);
-    char *output_path = fname(prefix, "bc");
-    free(path);
-    free(prefix);
-
-    FILE *output = fopen(output_path, "wb");
-    if (!output) {
-      fprintf(stderr, "Error opening output file %s\n", output_path);
-      free(output_path);
-      continue;
-    }
-
-    xs.avail_out = sizeof(buffer);
-    xs.next_out = buffer;
-
-    int32_t ret;
-    while ((ret = xar_extract_tostream(&xs)) != XAR_STREAM_END) {
-      if (ret == XAR_STREAM_ERR) {
-        fprintf(stderr, "Error extracting stream %s\n", output_path);
-        free(output_path);
-        return 3;
-      }
-
-      fwrite(buffer, sizeof(char), sizeof(buffer) - xs.avail_out, output);
-
-      xs.avail_out = sizeof(buffer);
-      xs.next_out = buffer;
-    }
-
-    if (xar_extract_tostream_end(&xs) != XAR_STREAM_OK) {
-      fprintf(stderr, "Error ending stream %s\n", output_path);
-    }
-
-    fclose(output);
-    files[(*count)++] = output_path;
-  }
-  return 0;
-}
-
-int write_to_bitcode(struct bitcode_data *bitcode, char *files[], int *count) {
-  char *xar_file = write_to_xar(bitcode);
-  int extracted = extract_xar(xar_file, bitcode->cpu, files, count);
-  if (extracted != 0) {
-    fprintf(stderr, "Error extracting xar file %s\n", xar_file);
-    free(xar_file);
-    return 1;
-  }
-
-  int removed = remove(xar_file);
-  if (removed != 0) {
-    fprintf(stderr, "Error removing xar file %s\n", xar_file);
-    free(xar_file);
-    return 2;
-  }
-
-  free(xar_file);
-  return 0;
-}
+//int write_to_bitcode(bitcode_data *bitcode, char *files[], int *count) {
+//    char* file_name = write_to_file(bitcode);
+//    if(!bitcode->is_archive){
+//        printf("bit code is in byte code format not in archive, so need not to extract it");
+//        return 0;
+//    }
+//
+//  int extracted = extract_xar(file_name, bitcode->cpu, files, count);
+//  if (extracted != 0) {
+//    fprintf(stderr, "Error extracting xar file %s\n", file_name);
+//    free(file_name);
+//    return 1;
+//  }
+//
+//  int removed = remove(file_name);
+//  if (removed != 0) {
+//    fprintf(stderr, "Error removing xar file %s\n", file_name);
+//    free(file_name);
+//    return 2;
+//  }
+//
+//  free(file_name);
+//  return 0;
+//}
 
 int get_options(xmlNode *option_parent, char *options[], int *size) {
   xmlNode *cur_node = NULL;

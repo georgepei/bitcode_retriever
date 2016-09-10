@@ -16,6 +16,8 @@ set(SOURCE_FILES
     macho_retriever.h
     macho_util.c
     macho_util.h
-    main.c)
+    main.c
+        WinList.c
+        WinList.h)
 
 add_executable(bitcode_retriever ${SOURCE_FILES})

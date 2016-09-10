@@ -9,11 +9,6 @@
 #include <mach-o/swap.h>
 #include <mach/machine.h>
 
-const static int uint32_size = sizeof(uint32_t);
-
-const static int fat_header_size = sizeof(struct fat_header);
-const static int fat_arch_size = sizeof(struct fat_arch);
-
 struct _cpu_type_names {
   cpu_type_t cputype;
   const char *cpu_name;
@@ -41,15 +36,21 @@ static const char *cpu_type_name(cpu_type_t cpu_type) {
   return "unknown";
 }
 
-uint32_t get_magic(FILE *stream, int offset) {
-  uint32_t magic = 0;
+uint32_t read_uint32(FILE *stream, int offset) {
+  uint32_t data = 0;
   fseek(stream, offset, SEEK_SET);
-  fread(&magic, uint32_size, 1, stream);
-  rewind(stream);
-  return magic;
+  fread(&data, sizeof(uint32_t), 1, stream);
+  return data;
 }
 
-int is_magic_macho(const uint32_t magic) {
+bool read_data(FILE* stream, int offset, uint8_t* buffer, uint32_t buffersize)
+{
+    fseek(stream, offset, SEEK_SET);
+    fread(buffer, buffersize, 1, stream);
+    return true;
+}
+
+bool is_magic_macho(const uint32_t magic) {
   return magic == MH_MAGIC_64
       || magic == MH_CIGAM_64
       || magic == MH_MAGIC
@@ -62,30 +63,29 @@ bool is_magic_64(const uint32_t magic) {
   return magic == MH_MAGIC_64 || magic == MH_CIGAM_64;
 }
 
-int is_should_swap_bytes(const uint32_t magic) {
+bool is_should_swap_bytes(const uint32_t magic) {
   return magic == MH_CIGAM || magic == MH_CIGAM_64 || magic == FAT_CIGAM;
 }
 
-int is_fat(const uint32_t magic) {
+bool is_fat(const uint32_t magic) {
   return magic == FAT_MAGIC || magic == FAT_CIGAM;
 }
 
 struct fat_header *load_fat_header(FILE *stream, const int swap_bytes) {
-  struct fat_header *header = malloc(fat_header_size);
-  fread(header, fat_header_size, 1, stream);
-  rewind(stream);
+    struct fat_header *header = malloc(sizeof(struct fat_header));
+    read_data(stream, 0, (uint8_t *) header, sizeof(*header));
 
-  if (swap_bytes) {
-    swap_fat_header(header, 0);
-  }
+    if (swap_bytes) {
+        swap_fat_header(header, 0);
+    }
 
-  return header;
+    return header;
 }
 
 struct fat_arch *load_fat_arch(FILE *stream, const int offset, const int swap_bytes) {
-  struct fat_arch *arch = malloc(fat_arch_size);
+  struct fat_arch *arch = malloc(sizeof(struct fat_arch));
   fseek(stream, offset, SEEK_SET);
-  fread(arch, fat_arch_size, 1, stream);
+  fread(arch, sizeof(struct fat_arch), 1, stream);
   rewind(stream);
 
   if (swap_bytes) {
@@ -93,14 +93,6 @@ struct fat_arch *load_fat_arch(FILE *stream, const int offset, const int swap_by
   }
 
   return arch;
-}
-
-uint32_t offset_for_arch(FILE *stream, const int index, const int swap_bytes) {
-  int offset = fat_header_size + fat_arch_size * index;
-  struct fat_arch *arch = load_fat_arch(stream, offset, swap_bytes);
-  uint32_t arch_offset = arch->offset;
-  free(arch);
-  return arch_offset;
 }
 
 struct mach_header *load_mach_header(FILE *stream, const int offset, const int swap_bytes, bool is64bit) {
@@ -118,7 +110,7 @@ struct mach_header *load_mach_header(FILE *stream, const int offset, const int s
 
     if (swap_bytes) {
         if (is64bit) {
-            swap_mach_header_64(header, 0);
+            swap_mach_header_64((struct mach_header_64 *)header, 0);
         } else {
             swap_mach_header(header, 0);
         }
@@ -157,7 +149,7 @@ struct segment_command *load_segment_command(FILE *stream, const int offset, str
 
   if (swap_bytes) {
       if(is64bit) {
-          swap_segment_command_64(command, 0);
+          swap_segment_command_64((struct segment_command_64*)command, 0);
       } else{
           swap_segment_command(command, 0);
       }
@@ -166,7 +158,7 @@ struct segment_command *load_segment_command(FILE *stream, const int offset, str
   return command;
 }
 
-struct bitcode_data* find_bitcode_section(FILE *stream, struct mach_header *header, const int offset, const int swap_bytes, struct segment_command_64* cmd) {
+bitcode_data* find_bitcode_section(FILE *stream, struct mach_header *header, const int offset, const int swap_bytes, struct segment_command* cmd) {
     bool is64bit = is_magic_64(header->magic);
     uint32_t section_size = 0;
     uint32_t machohead_size = 0;
@@ -208,7 +200,7 @@ struct bitcode_data* find_bitcode_section(FILE *stream, struct mach_header *head
                 section_size = ((struct section*)section)->size;
             }
 
-            struct bitcode_data* bitcode = make_bitcode(stream, cpu_name, offset + section_offset, section_size, false);
+            bitcode_data* bitcode = make_bitcode(stream, cpu_name, offset + section_offset, section_size, false);
 
             return bitcode;
         }
@@ -216,7 +208,7 @@ struct bitcode_data* find_bitcode_section(FILE *stream, struct mach_header *head
     return NULL;
 }
 
-struct bitcode_data *load_llvm_segment_command(FILE *stream, const int offset, struct mach_header *header) {
+bitcode_data *load_llvm_segment_command(FILE *stream, const int offset, struct mach_header *header) {
     int swap_bytes = is_should_swap_bytes(header->magic);
     int is64bit = is_magic_64(header->magic);
 
@@ -236,11 +228,11 @@ struct bitcode_data *load_llvm_segment_command(FILE *stream, const int offset, s
         cpu_type = header->cputype;
     }
 
-    struct bitcode_data *bitcode = NULL;
+    bitcode_data *bitcode = NULL;
 
     for (int i = 0; i < load_command_size; i++) {
         struct load_command *cmd = load_load_command(stream, cmd_offset, swap_bytes);
-        if (cmd->cmd == LC_SEGMENT_64 || cmd == LC_SEGMENT) {
+        if (cmd->cmd == LC_SEGMENT_64 || cmd->cmd == LC_SEGMENT) {
             struct segment_command *segment = load_segment_command(stream, cmd_offset, header);
             if (filetype == MH_OBJECT) {
                 bitcode = find_bitcode_section(stream, header, offset, swap_bytes, segment);
@@ -262,4 +254,29 @@ struct bitcode_data *load_llvm_segment_command(FILE *stream, const int offset, s
     }
 
     return bitcode;
+}
+
+
+archive_header_line* get_archive_header_line(FILE *stream, uint32_t offset)
+{
+    archive_header_line* header = calloc(sizeof(archive_header_line), 1);
+    uint32_t header_fixsize = (uint8_t *)&header->long_name - (uint8_t *)header;
+    read_data(stream, offset, (uint8_t *)header, header_fixsize);
+    if(strncmp((const char *)header->name, "#1/", 3) == 0){
+        uint32_t realname_size = atoi((const char *)header->name+3);
+        header->long_name = calloc(realname_size, 1);
+        read_data(stream, offset+header_fixsize, (uint8_t *)header->long_name, realname_size);
+        header->header_size = header_fixsize+realname_size;
+    } else{
+        header->header_size = header_fixsize;
+    }
+    return header;
+}
+
+void free_archive_header_line(archive_header_line*  header)
+{
+    if(header->long_name != NULL){
+        free(header->long_name);
+    }
+    free(header);
 }

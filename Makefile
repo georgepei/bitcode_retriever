@@ -3,7 +3,7 @@ CC=$(shell which clang)
 BUILD_DIR=build
 SUBJECT_DIR=subject
 
-SOURCE_FILES=main.c macho_retriever.c macho_reader.c macho_util.c -I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include/libxml2/
+SOURCE_FILES=main.c macho_retriever.c macho_reader.c macho_util.c WinList.c -I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include/libxml2/
 
 RETRIEVER_BIN=$(BUILD_DIR)/bitcode_retriever
 
