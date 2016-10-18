@@ -187,22 +187,25 @@ bitcode_data* find_bitcode_section(FILE *stream, struct mach_header *header, con
         }
 
         printf("sgement name: %s, section name: %s\n", section->segname, section->sectname);
-        if(strcmp(section->sectname, "__bitcode") == 0 && strcmp(section->segname, "__LLVM") == 0){
-            //found bitcode
-            const char *cpu_name = cpu_type_name(header->cputype);
-            int32_t section_offset = 0;
-            int32_t section_size = 0;
-            if(is64bit){
-                section_offset = ((struct section_64*)section)->offset;
-                section_size = ((struct section_64*)section)->size;
-            } else{
-                section_offset = ((struct section*)section)->offset;
-                section_size = ((struct section*)section)->size;
+        if(strcmp(section->segname, "__LLVM") == 0){
+            if(strcmp(section->sectname, "__bitcode") == 0 || strcmp(section->sectname, "__bundle") == 0 ) {
+                //found bitcode
+                const char *cpu_name = cpu_type_name(header->cputype);
+                int32_t section_offset = 0;
+                int32_t section_size = 0;
+                if (is64bit) {
+                    section_offset = ((struct section_64 *) section)->offset;
+                    section_size = ((struct section_64 *) section)->size;
+                } else {
+                    section_offset = ((struct section *) section)->offset;
+                    section_size = ((struct section *) section)->size;
+                }
+
+                bool is_archive = strcmp(section->sectname, "__bundle") == 0 ? true: false;
+                bitcode_data *bitcode = make_bitcode(stream, cpu_name, offset + section_offset, section_size, is_archive);
+
+                return bitcode;
             }
-
-            bitcode_data* bitcode = make_bitcode(stream, cpu_name, offset + section_offset, section_size, false);
-
-            return bitcode;
         }
     }
     return NULL;

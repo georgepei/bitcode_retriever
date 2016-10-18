@@ -3,7 +3,7 @@ project(bitcode_retriever)
 
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-add_definitions(-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include/libxml2/)
+#add_definitions(-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include/libxml2/)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lxar -lxml2")
 
